@@ -34,29 +34,54 @@ from pathlib import Path
 
 
 
-def in_data():
+def split_data():
     # --- config ---
     DATA_DIR = Path('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')  # path to dataset
     BATCH_SIZE = 64
-    VAL_SPLIT = 0.3
+    VAL_SPLIT = 0.2
+    TEST_SPLIT = 0.2
+    TRAIN_SPLIT = 0.6
     SEED = 1337
+
+    TEMP_SPLIT = VAL_SPLIT + TEST_SPLIT 
 
     train_ds = tf.keras.utils.image_dataset_from_directory(
         DATA_DIR,
-        validation_split=VAL_SPLIT,
+        validation_split=TEMP_SPLIT,
         subset="training",
         seed=SEED,
         batch_size=BATCH_SIZE,
     )
 
-    val_ds = tf.keras.utils.image_dataset_from_directory(
+    temp_ds = tf.keras.utils.image_dataset_from_directory(
         DATA_DIR,
-        validation_split=VAL_SPLIT,
+        validation_split=TEMP_SPLIT,
         subset="validation",
         seed=SEED,
         batch_size=BATCH_SIZE,
     )
+
+    # splitting the val and test using batches
+    temp_batches = tf.data.experimental.cardinality(temp_ds).numpy()
+    val_fract_of_temp = VAL_SPLIT / (VAL_SPLIT + TEST_SPLIT)
+    val_batches = int(temp_batches * val_fract_of_temp)
+
+    val_ds = temp_ds.take(val_batches)
+    test_ds = temp_ds.skip(val_batches)
+
+    # tweaks to increase performance
+    AUTOTUNE = tf.data.AUTOTUNE
+    train_ds = train_ds.cache().prefetch(AUTOTUNE)
+    val_ds = val_ds.cache().prefetch(AUTOTUNE)
+    test_ds = test_ds.cache().prefetch(AUTOTUNE)
+
+    # (Optional) Verify class names and sizes
+    print("Classes:", train_ds.class_names)
+    print("Train batches:", tf.data.experimental.cardinality(train_ds).numpy())
+    print("Val batches:", tf.data.experimental.cardinality(val_ds).numpy())
+    print("Test batches:", tf.data.experimental.cardinality(test_ds).numpy())
+    
     
     
 def main():
-    in_data()
+    split_data()
