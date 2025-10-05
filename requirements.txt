@@ -1,0 +1,13 @@
+#run 'pip install -r requirements.txt' to install needed packages
+pandas
+numpy
+seaborn
+opencv-python
+matplotlib
+plotly
+tensorflow
+pillow
+ipython
+torch
+torchvision
+scikit-learn
