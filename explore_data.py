@@ -13,7 +13,6 @@ from plotly.subplots import make_subplots
 from keras.layers import GlobalAveragePooling2D, Dense
 #from tensorflow.keras.models import Model
 from PIL import Image
-from glob import glob
 import plotly.offline as pyo
 from IPython.display import display
 import torch
@@ -24,15 +23,23 @@ import torch.optim as optim
 from sklearn.metrics import precision_score, recall_score, f1_score
 from sklearn.metrics import confusion_matrix
 from pathlib import Path
-
-#   images_list = []
-    # for filename in glob.glob('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images/*.jpg'):
-    # im = Image.open(filename)
-    # images_list.append(im)
-
     
-
-
+def explore(data_path):
+    classes = os.listdir(data_path)
+    for class_name in classes:
+        if class_name.startswith('.'):
+            continue
+        
+        class_path = os.path.join(data_path, class_name)
+        if not os.path.isdir(class_path):
+            continue
+        
+        count = len([
+            f for f in os.listdir(class_path)
+            if not f.startswith('.')
+        ])
+        
+        print(f"{class_name}: {count} images")
 
 def split_data():
     # --- config ---
@@ -42,7 +49,7 @@ def split_data():
     TEST_SPLIT = 0.2
     TRAIN_SPLIT = 0.6
     SEED = 1337
-
+    assert abs(TRAIN_SPLIT + VAL_SPLIT + TEST_SPLIT - 1.0) < 1e-6
     TEMP_SPLIT = VAL_SPLIT + TEST_SPLIT 
 
     train_ds = tf.keras.utils.image_dataset_from_directory(
@@ -75,13 +82,16 @@ def split_data():
     val_ds = val_ds.cache().prefetch(AUTOTUNE)
     test_ds = test_ds.cache().prefetch(AUTOTUNE)
 
-    # (Optional) Verify class names and sizes
-    print("Classes:", train_ds.class_names)
+    # Verify split
     print("Train batches:", tf.data.experimental.cardinality(train_ds).numpy())
     print("Val batches:", tf.data.experimental.cardinality(val_ds).numpy())
     print("Test batches:", tf.data.experimental.cardinality(test_ds).numpy())
     
+
     
     
 def main():
     split_data()
+    explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
+
+main()
