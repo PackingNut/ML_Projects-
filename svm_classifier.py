@@ -8,8 +8,11 @@ from pathlib import Path
 from sklearn.svm import LinearSVC
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import joblib
+import json
+from PIL import Image
+
     
 def explore(data_path):
     classes = os.listdir(data_path)
@@ -90,6 +93,16 @@ def split_data():
     IMG_SIZE = (224, 224)
     COLOR_MODE = 'rgb'
 
+    # Force a deterministic class order that matches my folders
+    CLASS_NAMES = [
+        'DALL-E','DeepFaceLab','Face2Face','FaceShifter','FaceSwap',
+        'Midjourney','NeuralTextures','Stable Diffusion','StyleGAN','Real'
+    ]
+    
+    REAL_NAME = 'Real'
+    REAL_IDX = CLASS_NAMES.index(REAL_NAME)
+    
+    
     train_ds = tf.keras.utils.image_dataset_from_directory(
         DATA_DIR,
         validation_split=TEMP_SPLIT,
@@ -99,6 +112,7 @@ def split_data():
         image_size=IMG_SIZE,
         color_mode=COLOR_MODE,
         shuffle=True,
+        class_names=CLASS_NAMES,
     )
 
     temp_ds = tf.keras.utils.image_dataset_from_directory(
@@ -110,7 +124,13 @@ def split_data():
         image_size=IMG_SIZE,
         color_mode=COLOR_MODE,
         shuffle=True,
+        class_names=CLASS_NAMES, #mapping
     )
+    
+    # # Persist  mapping so predictions use the same indices
+    # with open(OUT_DIR / "class_names.json", "w") as f:
+    #     json.dump(CLASS_NAMES, f)
+    # print("Label mapping:", dict(enumerate(CLASS_NAMES)))
 
     # splitting the val and test using batches
     temp_batches = tf.data.experimental.cardinality(temp_ds).numpy()
@@ -119,6 +139,17 @@ def split_data():
 
     val_ds = temp_ds.take(val_batches)
     test_ds = temp_ds.skip(val_batches)
+    
+    def to_binary(_, y):
+        return _, tf.where(tf.equal(y, REAL_IDX), 1, 0)
+    
+    train_ds = train_ds.map(to_binary)
+    val_ds   = val_ds.map(to_binary)
+    test_ds  = test_ds.map(to_binary)
+
+    # (Optional) save the binary label names for later reports/predictions
+    with open(OUT_DIR / "class_names.json", "w") as f:
+        json.dump(['fake', 'real'], f)
 
     # Verify split
     print("Train batches:", tf.data.experimental.cardinality(train_ds).numpy())
@@ -147,15 +178,21 @@ def ds_to_numpy(ds: tf.data.Dataset):
 def get_class_names(data_dir: Path):
     return sorted([d.name for d in data_dir.iterdir() if d.is_dir() and not d.name.startswith('.')])
 
+def load_class_names(out_dir: Path) -> list[str]:
+    p = out_dir / "class_names.json"
+    if p.exists():
+        return json.load(open(p))
+    return ['fake', 'real']
+    
 #SVM training
 def train_svm(
     out_dir: Path = Path("./npy_out"),
-    data_dir: Path = Path('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images'),
     normalize_from_uint8: bool = True,
     C: float = 1.0,
     max_iter: int = 5000,
 ):
-    out_dir = Path(out_dir)
+    class_names = load_class_names(out_dir)
+    LABELS = [0, 1]
     
     # Load arrays from folder
     X_train = np.load(out_dir / "X_train.npy", mmap_mode="r")
@@ -165,19 +202,12 @@ def train_svm(
     X_test = np.load(out_dir / "X_test.npy", mmap_mode="r")
     y_test = np.load(out_dir / "y_test.npy")
     
-    #flatten
-    n_train = X_train.shape[0]
-    n_val = X_val.shape[0]
-    n_test = X_test.shape[0]
-    D = np.prod(X_train.shape[1:], dtype=int)
-    
+    #flatten & scale
+    D = int(np.prod(X_train.shape[1:])) 
     def prep(X_mm):
         X = X_mm.reshape((X_mm.shape[0], D))
-        if normalize_from_uint8:
-            X = X.astype(np.float32) / 255.0
-        else:
-            X = X.astype(np.float32)
-        return X
+        return (X.astype(np.float32)/255.0) if normalize_from_uint8 else X.astype(np.float32)
+    
     X_train_2d = prep(X_train)
     X_val_2d = prep(X_val)
     X_test_2d = prep(X_test)
@@ -187,39 +217,87 @@ def train_svm(
     #model linear SVM and scale feature variance without centering
     clf = make_pipeline(
         StandardScaler(with_mean=False),
-        LinearSVC(C=C, max_iter=max_iter, dual=True)
+        LinearSVC(C=C, max_iter=max_iter, dual=True, class_weight="balanced", random_state=1337)
     )
     
     #Fit to the train
     clf.fit(X_train_2d, y_train)
-
+    
     def evaluate(X, y, split_name):
         y_pred = clf.predict(X)
         acc = accuracy_score(y, y_pred)
-        print(f"\n[{split_name}] accuracy: {acc: .4f}")
-        print(classification_report(y, y_pred, target_names=get_class_names(data_dir)))
+        print(f"\n[{split_name}] accuracy: {acc:.4f}")
+        print(classification_report(y, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
+        print("Confusion matrix (rows=true, cols=pred):\n", confusion_matrix(y, y_pred, labels=LABELS))
         return y_pred
     
-    _ = evaluate(X_val_2d, y_val, "VAL")
-    _ = evaluate(X_test_2d, y_test, "TEST")
+    evaluate(X_val_2d, y_val, "VAL")
+    evaluate(X_test_2d, y_test, "TEST")
     
-    model_path = out_dir / "svm_linear.joblib"
-    joblib.dump(clf, model_path)
-    print(f"\nSaved model -> {model_path.resolve()}")
-    
+    # Save Model
+    joblib.dump(clf, out_dir  / "svm_linear.joblib")
+    print("Saved model ->", (out_dir / "svm_linear.joblib").resolve())
     return clf
+
+def eval_saved_test(
+    model_path=Path("./npy_out/svm_linear.joblib"),
+    out_dir=Path("./npy_out"),
+    normalize_from_uint8=True,
+):
+    class_names = json.load(open(out_dir / "class_names.json"))
+    LABELS = [0, 1]
+    
+    clf = joblib.load(model_path)
+    X_test = np.load(out_dir / "X_test.npy", mmap_mode="r")
+    y_test = np.load(out_dir / "y_test.npy")
+    
+    D = int(np.prod(X_test.shape[1:]))
+    X = X_test.reshape((X_test.shape[0], D))
+    X = (X.astype(np.float32)/255.0) if normalize_from_uint8 else X.astype(np.float32)
+
+    y_pred = clf.predict(X)
+    print(f"[TEST] accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print(classification_report(y_test, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
+    print("Confusion matrix:\n", confusion_matrix(y_test, y_pred, labels=LABELS))
+    
+
+IMG_SIZE = (224, 224)
+COLOR_MODE = "rgb"
+NORMALIZE_FROM_UINT8 = True
+
+def predict_image(image_path: str,
+                  model_path="./npy_out/svm_linear.joblib",
+                  out_dir="./npy_out"):
+    import json, joblib
+    class_names = json.load(open(Path(out_dir) / "class_names.json"))
+    clf = joblib.load(model_path)
+
+    img = Image.open(image_path).convert("RGB" if COLOR_MODE=="rgb" else "L")
+    img = img.resize(IMG_SIZE)
+    x = np.array(img).reshape(1, -1).astype(np.float32)
+    if NORMALIZE_FROM_UINT8:
+        x = x / 255.0
+
+    pred_idx = int(clf.predict(x)[0])
+    print(f"Prediction: {class_names[pred_idx].upper()}  (index {pred_idx})")
+
+    # Optional: show decision margin for transparency
+    if hasattr(clf, "decision_function"):
+        margin = clf.decision_function(x)  # shape: (1, 2)
+        print("Decision margins [fake, real]:", margin[0])
+
 
 
 def main():
     #ensure splits exist
-    train_ds, val_ds, test_ds = split_data()
+    split_data()
     train_svm(
-        out_dir=Path("./.npy_out"),
-        data_dir=Path('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images'),
+        out_dir=Path("./npy_out"),
         normalize_from_uint8=True,
         C=1.0,
         max_iter=5000,
     )
+    eval_saved_test()
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
 
 main()
