@@ -1,27 +1,7 @@
-# Import Python Package
-import pandas as pd
+# Import Python Packages
 import numpy as np
-import seaborn as sns
 import os
-import cv2
-import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
 import tensorflow as tf
-#from tensorflow.keras import layers, models
-from plotly.subplots import make_subplots
-from keras.layers import GlobalAveragePooling2D, Dense
-#from tensorflow.keras.models import Model
-from PIL import Image
-import plotly.offline as pyo
-from IPython.display import display
-import torch
-import torchvision
-import torchvision.transforms as transforms
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.metrics import precision_score, recall_score, f1_score
-from sklearn.metrics import confusion_matrix
 from pathlib import Path
     
 def explore(data_path):
@@ -84,9 +64,7 @@ def split_memmap(
     #Flush data
     del X_mm
     del y_mm
-
-    
-    
+  
 
 def split_data():
     # --- config ---
@@ -141,18 +119,13 @@ def split_data():
     print("Test batches:", tf.data.experimental.cardinality(test_ds).numpy())
     
     NORMALIZE = False
-    
     split_memmap(train_ds, OUT_DIR/'X_train.npy', OUT_DIR/'y_train.npy', IMG_SIZE, normalize=NORMALIZE)
-    split_memmap(train_ds, OUT_DIR/'X_val.npy', OUT_DIR/'y_val.npy', IMG_SIZE, normalize=NORMALIZE)
-    split_memmap(train_ds, OUT_DIR/'X_test.npy', OUT_DIR/'y_test.npy', IMG_SIZE, normalize=NORMALIZE)
+    split_memmap(val_ds, OUT_DIR/'X_val.npy', OUT_DIR/'y_val.npy', IMG_SIZE, normalize=NORMALIZE)
+    split_memmap(test_ds, OUT_DIR/'X_test.npy', OUT_DIR/'y_test.npy', IMG_SIZE, normalize=NORMALIZE)
     
     print("Saved .npy files in: ", OUT_DIR.resolve())
 
 
-    
-    
-
-    
 def ds_to_numpy(ds: tf.data.Dataset):
     X_list, y_list = [], []
     for x, y in ds.unbatch():
@@ -163,9 +136,8 @@ def ds_to_numpy(ds: tf.data.Dataset):
     
     return X,y
     
-    
 def main():
-    train_ds, val_ds, test_ds = split_data()
+    split_data()
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
 
 main()
