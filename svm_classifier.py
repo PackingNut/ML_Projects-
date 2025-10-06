@@ -3,6 +3,13 @@ import numpy as np
 import os
 import tensorflow as tf
 from pathlib import Path
+
+#SVM imports
+from sklearn.svm import LinearSVC
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
     
 def explore(data_path):
     classes = os.listdir(data_path)
@@ -136,8 +143,83 @@ def ds_to_numpy(ds: tf.data.Dataset):
     
     return X,y
     
+# get class names from directory; same way as keras    
+def get_class_names(data_dir: Path):
+    return sorted([d.name for d in data_dir.iterdir() if d.is_dir() and not d.name.startswith('.')])
+
+#SVM training
+def train_svm(
+    out_dir: Path = Path("./npy_out"),
+    data_dir: Path = Path('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images'),
+    normalize_from_uint8: bool = True,
+    C: float = 1.0,
+    max_iter: int = 5000,
+):
+    out_dir = Path(out_dir)
+    
+    # Load arrays from folder
+    X_train = np.load(out_dir / "X_train.npy", mmap_mode="r")
+    y_train = np.load(out_dir / "y_train.npy")
+    X_val = np.load(out_dir / "X_val.npy", mmap_mode="r")
+    y_val = np.load(out_dir / "y_val.npy")
+    X_test = np.load(out_dir / "X_test.npy", mmap_mode="r")
+    y_test = np.load(out_dir / "y_test.npy")
+    
+    #flatten
+    n_train = X_train.shape[0]
+    n_val = X_val.shape[0]
+    n_test = X_test.shape[0]
+    D = np.prod(X_train.shape[1:], dtype=int)
+    
+    def prep(X_mm):
+        X = X_mm.reshape((X_mm.shape[0], D))
+        if normalize_from_uint8:
+            X = X.astype(np.float32) / 255.0
+        else:
+            X = X.astype(np.float32)
+        return X
+    X_train_2d = prep(X_train)
+    X_val_2d = prep(X_val)
+    X_test_2d = prep(X_test)
+    
+    print(f"Train shape: {X_train_2d.shape}, Val: {X_val_2d.shape}, Test: {X_test_2d.shape}")
+    
+    #model linear SVM and scale feature variance without centering
+    clf = make_pipeline(
+        StandardScaler(with_mean=False),
+        LinearSVC(C=C, max_iter=max_iter, dual=True)
+    )
+    
+    #Fit to the train
+    clf.fit(X_train_2d, y_train)
+
+    def evaluate(X, y, split_name):
+        y_pred = clf.predict(X)
+        acc = accuracy_score(y, y_pred)
+        print(f"\n[{split_name}] accuracy: {acc: .4f}")
+        print(classification_report(y, y_pred, target_names=get_class_names(data_dir)))
+        return y_pred
+    
+    _ = evaluate(X_val_2d, y_val, "VAL")
+    _ = evaluate(X_test_2d, y_test, "TEST")
+    
+    model_path = out_dir / "svm_linear.joblib"
+    joblib.dump(clf, model_path)
+    print(f"\nSaved model -> {model_path.resolve()}")
+    
+    return clf
+
+
 def main():
-    split_data()
+    #ensure splits exist
+    train_ds, val_ds, test_ds = split_data()
+    train_svm(
+        out_dir=Path("./.npy_out"),
+        data_dir=Path('/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images'),
+        normalize_from_uint8=True,
+        C=1.0,
+        max_iter=5000,
+    )
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
 
 main()
