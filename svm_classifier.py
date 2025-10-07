@@ -6,8 +6,6 @@ from pathlib import Path
 
 #SVM imports
 from sklearn.linear_model import SGDClassifier
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 import joblib
@@ -190,61 +188,6 @@ def load_class_names(out_dir: Path) -> list[str]:
     if p.exists():
         return json.load(open(p))
     return ['fake', 'real']
-    
-#SVM training
-def train_svm(
-    out_dir=Path("./npy_out"),
-    normalize_from_uint8: bool = True,
-    C: float = 1.0,
-    max_iter: int = 5000,
-):
-    class_names = load_class_names(out_dir)
-    LABELS = [0, 1]
-    
-    # Load arrays from folder
-    X_train = np.load(out_dir / "X_train.npy", mmap_mode="r")
-    y_train = np.load(out_dir / "y_train.npy")
-    X_val = np.load(out_dir / "X_val.npy", mmap_mode="r")
-    y_val = np.load(out_dir / "y_val.npy")
-    X_test = np.load(out_dir / "X_test.npy", mmap_mode="r")
-    y_test = np.load(out_dir / "y_test.npy")
-    
-    #flatten & scale
-    D = int(np.prod(X_train.shape[1:])) 
-    def prep(X_mm):
-        X = X_mm.reshape((X_mm.shape[0], D))
-        return (X.astype(np.float32)/255.0) if normalize_from_uint8 else X.astype(np.float32)
-    
-    X_train_2d = prep(X_train)
-    X_val_2d = prep(X_val)
-    X_test_2d = prep(X_test)
-    
-    print(f"Train shape: {X_train_2d.shape}, Val: {X_val_2d.shape}, Test: {X_test_2d.shape}")
-    
-    #model linear SVM and scale feature variance without centering
-    clf = make_pipeline(
-        StandardScaler(with_mean=False),
-        LinearSVC(C=C, max_iter=max_iter, dual=True, class_weight="balanced", random_state=1337)
-    )
-    
-    #Fit to the train
-    clf.fit(X_train_2d, y_train)
-    
-    def evaluate(X, y, split_name):
-        y_pred = clf.predict(X)
-        acc = accuracy_score(y, y_pred)
-        print(f"\n[{split_name}] accuracy: {acc:.4f}")
-        print(classification_report(y, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
-        print("Confusion matrix (rows=true, cols=pred):\n", confusion_matrix(y, y_pred, labels=LABELS))
-        return y_pred
-    
-    evaluate(X_val_2d, y_val, "VAL")
-    evaluate(X_test_2d, y_test, "TEST")
-    
-    # Save Model
-    joblib.dump(clf, out_dir  / "svm_linear.joblib")
-    print("Saved model ->", (out_dir / "svm_linear.joblib").resolve())
-    return clf
 
 def eval_saved_test(
     model_path=Path("./npy_out/svm_linear_streaming.joblib"),
@@ -317,6 +260,7 @@ def predict_image(image_path: str,
 #             ok = False
 #     return ok
 
+#SVM Training
 def train_linear_svm_streaming(out_dir=Path("./npy_out"),
                                normalize_from_uint8=True,
                                batch_size=512, epochs=2, alpha=1e-4, rng_seed=1337):
@@ -381,12 +325,6 @@ def main():
     #ensure splits exist
     split_data()
     #assert validate_npy(Path("./npy_out")), "Saved .npy files look invalid"
-    # train_svm(
-    #     out_dir=Path("./npy_out"),
-    #     normalize_from_uint8=True,
-    #     C=1.0,
-    #     max_iter=5000,
-    # )
     train_linear_svm_streaming(out_dir=Path("./npy_out"), batch_size=512, epochs=2)
     eval_saved_test()
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
