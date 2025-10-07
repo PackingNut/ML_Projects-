@@ -12,6 +12,10 @@ import joblib
 import json
 from PIL import Image
 from tempfile import NamedTemporaryFile
+
+# Graph imports
+import matplotlib.pyplot as plt
+
     
 def explore(data_path):
     classes = os.listdir(data_path)
