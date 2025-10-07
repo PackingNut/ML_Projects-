@@ -5,13 +5,16 @@ import tensorflow as tf
 from pathlib import Path
 
 #SVM imports
-from sklearn.svm import LinearSVC
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.utils.class_weight import compute_class_weight
 import joblib
 import json
 from PIL import Image
+from tempfile import NamedTemporaryFile
+
+# Graph imports
+import matplotlib.pyplot as plt
 
     
 def explore(data_path):
@@ -30,50 +33,56 @@ def explore(data_path):
         ])
         
         print(f"{class_name}: {count} images")
-        
-def count_examples(ds: tf.data.Dataset) -> int:
-    return ds.unbatch().reduce(tf.constant(0, dtype=tf.int64), lambda acc, _: acc + 1).numpy()        
+              
 
 def split_memmap(
-    ds: tf.data.Dataset,
+    ds,
     out_path_X: Path,
     out_path_y: Path,
-    image_size: tuple[int, int],
+    image_size,
     normalize: bool = False,
 ):
     H, W = image_size
     C = 3
     
+    def num_examples(d):
+        total = 0
+        for xb, _ in d:
+            total += int(xb.shape[0])
+        return total
     #count items to pre-size
-    N = count_examples(ds)
+    N = num_examples(ds)
     
     if normalize:
         x_dtype = np.float16
     else:
         x_dtype = np.uint8
     
-    #Create on-disk .npy files and memory map them
-    open_memmap = np.lib.format.open_memmap
-    X_mm = open_memmap(out_path_X, mode='w+', dtype=x_dtype, shape=(N, H, W, C))
-    y_mm = open_memmap(out_path_y, mode='w+', dtype=np.int64, shape=(N,))
-    
-    #stream through data and write
-    idx = 0 
+    # Write to temp files, then atomically move into place on success.
+
+    with NamedTemporaryFile(delete=False, dir=str(out_path_X.parent), suffix=".tmp") as tx,\
+         NamedTemporaryFile(delete=False, dir=str(out_path_y.parent), suffix=".tmp") as ty:
+        tx_name, ty_name = tx.name, ty.name
+
+    # Create memmaps using the temp paths (use str() for safety)
+    X_mm = np.lib.format.open_memmap(str(tx_name), mode="w+", dtype=x_dtype, shape=(N, H, W, C))
+    Y_mm = np.lib.format.open_memmap(str(ty_name), mode="w+", dtype=np.int64,  shape=(N,))
+
+    idx = 0
     for xb, yb in ds:
         xb = xb.numpy()
-        if normalize:
-            xb = (xb / 255.0).astype(np.float16)
-        else:
-            xb = xb.astype(np.uint8)
-        
+        xb = (xb / 255.0).astype(np.float16) if normalize else xb.astype(np.uint8)
         b = xb.shape[0]
         X_mm[idx:idx+b] = xb
-        y_mm[idx:idx+b] = yb.numpy().astype(np.int64)
+        Y_mm[idx:idx+b] = yb.numpy().astype(np.int64)
         idx += b
-    
-    #Flush data
+
+    # Ensure buffers are flushed and closed before rename
     del X_mm
-    del y_mm
+    del Y_mm
+
+    os.replace(tx_name, out_path_X)
+    os.replace(ty_name, out_path_y)
   
 
 def split_data():
@@ -183,64 +192,9 @@ def load_class_names(out_dir: Path) -> list[str]:
     if p.exists():
         return json.load(open(p))
     return ['fake', 'real']
-    
-#SVM training
-def train_svm(
-    out_dir: Path = Path("./npy_out"),
-    normalize_from_uint8: bool = True,
-    C: float = 1.0,
-    max_iter: int = 5000,
-):
-    class_names = load_class_names(out_dir)
-    LABELS = [0, 1]
-    
-    # Load arrays from folder
-    X_train = np.load(out_dir / "X_train.npy", mmap_mode="r")
-    y_train = np.load(out_dir / "y_train.npy")
-    X_val = np.load(out_dir / "X_val.npy", mmap_mode="r")
-    y_val = np.load(out_dir / "y_val.npy")
-    X_test = np.load(out_dir / "X_test.npy", mmap_mode="r")
-    y_test = np.load(out_dir / "y_test.npy")
-    
-    #flatten & scale
-    D = int(np.prod(X_train.shape[1:])) 
-    def prep(X_mm):
-        X = X_mm.reshape((X_mm.shape[0], D))
-        return (X.astype(np.float32)/255.0) if normalize_from_uint8 else X.astype(np.float32)
-    
-    X_train_2d = prep(X_train)
-    X_val_2d = prep(X_val)
-    X_test_2d = prep(X_test)
-    
-    print(f"Train shape: {X_train_2d.shape}, Val: {X_val_2d.shape}, Test: {X_test_2d.shape}")
-    
-    #model linear SVM and scale feature variance without centering
-    clf = make_pipeline(
-        StandardScaler(with_mean=False),
-        LinearSVC(C=C, max_iter=max_iter, dual=True, class_weight="balanced", random_state=1337)
-    )
-    
-    #Fit to the train
-    clf.fit(X_train_2d, y_train)
-    
-    def evaluate(X, y, split_name):
-        y_pred = clf.predict(X)
-        acc = accuracy_score(y, y_pred)
-        print(f"\n[{split_name}] accuracy: {acc:.4f}")
-        print(classification_report(y, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
-        print("Confusion matrix (rows=true, cols=pred):\n", confusion_matrix(y, y_pred, labels=LABELS))
-        return y_pred
-    
-    evaluate(X_val_2d, y_val, "VAL")
-    evaluate(X_test_2d, y_test, "TEST")
-    
-    # Save Model
-    joblib.dump(clf, out_dir  / "svm_linear.joblib")
-    print("Saved model ->", (out_dir / "svm_linear.joblib").resolve())
-    return clf
 
 def eval_saved_test(
-    model_path=Path("./npy_out/svm_linear.joblib"),
+    model_path=Path("./npy_out/svm_linear_streaming.joblib"),
     out_dir=Path("./npy_out"),
     normalize_from_uint8=True,
 ):
@@ -286,17 +240,96 @@ def predict_image(image_path: str,
         margin = clf.decision_function(x)  # shape: (1, 2)
         print("Decision margins [fake, real]:", margin[0])
 
+# def validate_npy(out_dir=Path("./npy_out")):
+#     names = ["X_train.npy","y_train.npy","X_val.npy","y_val.npy","X_test.npy","y_test.npy"]
+#     ok = True
+#     for n in names:
+#         p = out_dir / n
+#         print("->", p)
+#         if not p.exists():
+#             print("   MISSING")
+#             ok = False
+#             continue
+#         with open(p, "rb") as f:
+#             magic = f.read(6)
+#             print("   magic:", magic)
+#             if magic != b"\x93NUMPY":
+#                 print("   NOT A NPY FILE (bad magic header)")
+#                 ok = False
+#         try:
+#             arr = np.load(p, mmap_mode=None)  # non-mmap to test the header
+#             print("   shape:", arr.shape, "dtype:", arr.dtype)
+#         except Exception as e:
+#             print("   FAILED to load:", e)
+#             ok = False
+#     return ok
+
+#SVM Training
+def train_linear_svm_streaming(out_dir=Path("./npy_out"),
+                               normalize_from_uint8=True,
+                               batch_size=512, epochs=2, alpha=1e-4, rng_seed=1337):
+    # load
+    X_train = np.load(out_dir/"X_train.npy", mmap_mode="r")
+    y_train = np.load(out_dir/"y_train.npy")
+    X_val   = np.load(out_dir/"X_val.npy",   mmap_mode="r")
+    y_val   = np.load(out_dir/"y_val.npy")
+    X_test  = np.load(out_dir/"X_test.npy",  mmap_mode="r")
+    y_test  = np.load(out_dir/"y_test.npy")
+
+    D = int(np.prod(X_train.shape[1:]))
+    classes = np.array([0, 1])
+
+    # --- compute balanced class weights and pass as dict ---
+    w = compute_class_weight(class_weight="balanced", classes=classes, y=y_train)
+    class_weight = {int(c): float(wi) for c, wi in zip(classes, w)}
+
+    clf = SGDClassifier(loss="hinge",
+                        alpha=alpha,
+                        class_weight=class_weight,   # <-- dict, works with partial_fit
+                        average=True,
+                        random_state=rng_seed,
+                        max_iter=1, tol=None)
+
+    rng = np.random.default_rng(rng_seed)
+    N = X_train.shape[0]
+
+    for e in range(epochs):
+        order = rng.permutation(N)
+        for s in range(0, N, batch_size):
+            idx = order[s:s+batch_size]
+            Xb = X_train[idx].reshape(-1, D).astype(np.float32)
+            if normalize_from_uint8: Xb /= 255.0
+            yb = y_train[idx]
+            if e == 0 and s == 0:
+                clf.partial_fit(Xb, yb, classes=classes)
+            else:
+                clf.partial_fit(Xb, yb)
+        print(f"epoch {e+1}/{epochs} done")
+
+    def eval_split(Xmm, y, name):
+        preds = []
+        for s in range(0, Xmm.shape[0], batch_size):
+            Xb = Xmm[s:s+batch_size].reshape(-1, D).astype(np.float32)
+            if normalize_from_uint8: Xb /= 255.0
+            preds.append(clf.predict(Xb))
+        y_pred = np.concatenate(preds)
+        print(f"[{name}] acc: {accuracy_score(y, y_pred):.4f}")
+        print(classification_report(y, y_pred,
+              labels=[0,1], target_names=['fake','real'], digits=4, zero_division=0))
+        print("Confusion matrix:\n", confusion_matrix(y, y_pred, labels=[0,1]))
+
+    eval_split(X_val,  y_val,  "VAL")
+    eval_split(X_test, y_test, "TEST")
+
+    joblib.dump(clf, out_dir/"svm_linear_streaming.joblib")
+    print("Saved ->", (out_dir/"svm_linear_streaming.joblib").resolve())
 
 
 def main():
     #ensure splits exist
     split_data()
-    train_svm(
-        out_dir=Path("./npy_out"),
-        normalize_from_uint8=True,
-        C=1.0,
-        max_iter=5000,
-    )
+    #assert validate_npy(Path("./npy_out")), "Saved .npy files look invalid"
+    train_linear_svm_streaming(out_dir=Path("./npy_out"), batch_size=512, epochs=2)
     eval_saved_test()
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
 
