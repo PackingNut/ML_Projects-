@@ -1,0 +1,65 @@
+Found 18124 files belonging to 10 classes.
+Using 10875 files for training.
+Found 18124 files belonging to 10 classes.
+Using 7249 files for validation.
+Train batches: 340
+Val batches: 113
+Test batches: 114
+2025-10-07 15:33:16.962313: I tensorflow/core/framework/local_rendezvous.cc:407] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+2025-10-07 15:33:22.070603: I tensorflow/core/framework/local_rendezvous.cc:407] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+2025-10-07 15:33:25.359417: I tensorflow/core/framework/local_rendezvous.cc:407] Local rendezvous is aborting with status: OUT_OF_RANGE: End of sequence
+Saved .npy files in:  /Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/npy_out
+epoch 1/2 done
+epoch 2/2 done
+[VAL] acc: 0.7649
+              precision    recall  f1-score   support
+
+        fake     0.9081    0.7221    0.8045      2422
+        real     0.6018    0.8518    0.7053      1194
+
+    accuracy                         0.7649      3616
+   macro avg     0.7549    0.7869    0.7549      3616
+weighted avg     0.8070    0.7649    0.7717      3616
+
+Confusion matrix:
+ [[1749  673]
+ [ 177 1017]]
+[TEST] acc: 0.7682
+              precision    recall  f1-score   support
+
+        fake     0.9090    0.7281    0.8085      2442
+        real     0.6041    0.8505    0.7064      1191
+
+    accuracy                         0.7682      3633
+   macro avg     0.7565    0.7893    0.7575      3633
+weighted avg     0.8090    0.7682    0.7751      3633
+
+Confusion matrix:
+ [[1778  664]
+ [ 178 1013]]
+Saved -> /Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/npy_out/svm_linear_streaming.joblib
+[TEST] accuracy: 0.7682
+              precision    recall  f1-score   support
+
+        fake     0.9090    0.7281    0.8085      2442
+        real     0.6041    0.8505    0.7064      1191
+
+    accuracy                         0.7682      3633
+   macro avg     0.7565    0.7893    0.7575      3633
+weighted avg     0.8090    0.7682    0.7751      3633
+
+Confusion matrix:
+ [[1778  664]
+ [ 178 1013]]
+Saved plots under /Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/npy_out
+Real: 5890 images
+StyleGAN: 1000 images
+FaceShifter: 1000 images
+FaceSwap: 1600 images
+Midjourney: 930 images
+DALL-E: 2000 images
+DeepFaceLab: 1606 images
+NeuralTextures: 1000 images
+Face2Face: 1000 images
+Stable Diffusion: 2098 images
+
