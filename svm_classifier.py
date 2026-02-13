@@ -7,13 +7,15 @@ from pathlib import Path
 #SVM + Plot imports
 from sklearn.linear_model import SGDClassifier
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc, precision_recall_curve, average_precision_score
+#SVM imports
+from sklearn.linear_model import SGDClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 import joblib
 import json
 from PIL import Image
 from tempfile import NamedTemporaryFile
 from matplotlib import pyplot as plt
-
 
     
 def explore(data_path):
@@ -209,6 +211,7 @@ def eval_saved_test(
     X = (X.astype(np.float32)/255.0) if normalize_from_uint8 else X.astype(np.float32)
 
     y_pred = clf.predict(X)
+<<<<<<< HEAD
     
     print(f"[TEST] accuracy: {accuracy_score(y_test, y_pred):.4f}")
     print(classification_report(y_test, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
@@ -222,6 +225,11 @@ def eval_saved_test(
     plot_score_regression(y_test, y_score, Path(out_dir) / "test_score_reg.png")
     print(f"Saved plots under {Path(out_dir).resolve()}")
 
+=======
+    print(f"[TEST] accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print(classification_report(y_test, y_pred, labels=LABELS, target_names=class_names, digits=4, zero_division=0))
+    print("Confusion matrix:\n", confusion_matrix(y_test, y_pred, labels=LABELS))
+>>>>>>> 67853e16185c53edbd3d9580bd5864ee25bb7cf6
     
 
 IMG_SIZE = (224, 224)
@@ -249,6 +257,7 @@ def predict_image(image_path: str,
         margin = clf.decision_function(x)  # shape: (1, 2)
         print("Decision margins [fake, real]:", margin[0])
 
+<<<<<<< HEAD
 def plot_conf_mat(cm, class_names, out_path):
     plt.figure(figsize=(4, 3))
     plt.imshow(cm, interpolation='nearest')
@@ -329,6 +338,31 @@ def plot_score_regression(y_true, y_score, out_path):
     plt.savefig(out_path, dpi=140)
     plt.close()
 
+=======
+# def validate_npy(out_dir=Path("./npy_out")):
+#     names = ["X_train.npy","y_train.npy","X_val.npy","y_val.npy","X_test.npy","y_test.npy"]
+#     ok = True
+#     for n in names:
+#         p = out_dir / n
+#         print("->", p)
+#         if not p.exists():
+#             print("   MISSING")
+#             ok = False
+#             continue
+#         with open(p, "rb") as f:
+#             magic = f.read(6)
+#             print("   magic:", magic)
+#             if magic != b"\x93NUMPY":
+#                 print("   NOT A NPY FILE (bad magic header)")
+#                 ok = False
+#         try:
+#             arr = np.load(p, mmap_mode=None)  # non-mmap to test the header
+#             print("   shape:", arr.shape, "dtype:", arr.dtype)
+#         except Exception as e:
+#             print("   FAILED to load:", e)
+#             ok = False
+#     return ok
+>>>>>>> 67853e16185c53edbd3d9580bd5864ee25bb7cf6
 
 #SVM Training
 def train_linear_svm_streaming(out_dir=Path("./npy_out"),
@@ -372,6 +406,7 @@ def train_linear_svm_streaming(out_dir=Path("./npy_out"),
                 clf.partial_fit(Xb, yb)
         print(f"epoch {e+1}/{epochs} done")
 
+<<<<<<< HEAD
     def eval_split(Xmm, y, name, out_dir, batch_size, D, normalize_from_uint8):
         preds, scores = [], []
         for s in range(0, Xmm.shape[0], batch_size):
@@ -400,12 +435,31 @@ def train_linear_svm_streaming(out_dir=Path("./npy_out"),
 
     val_acc  = eval_split(X_val,  y_val,  "VAL",  out_dir, batch_size, D, normalize_from_uint8)
     test_acc = eval_split(X_test, y_test, "TEST", out_dir, batch_size, D, normalize_from_uint8)
+=======
+    def eval_split(Xmm, y, name):
+        preds = []
+        for s in range(0, Xmm.shape[0], batch_size):
+            Xb = Xmm[s:s+batch_size].reshape(-1, D).astype(np.float32)
+            if normalize_from_uint8: Xb /= 255.0
+            preds.append(clf.predict(Xb))
+        y_pred = np.concatenate(preds)
+        print(f"[{name}] acc: {accuracy_score(y, y_pred):.4f}")
+        print(classification_report(y, y_pred,
+              labels=[0,1], target_names=['fake','real'], digits=4, zero_division=0))
+        print("Confusion matrix:\n", confusion_matrix(y, y_pred, labels=[0,1]))
+
+    eval_split(X_val,  y_val,  "VAL")
+    eval_split(X_test, y_test, "TEST")
+>>>>>>> 67853e16185c53edbd3d9580bd5864ee25bb7cf6
 
     joblib.dump(clf, out_dir/"svm_linear_streaming.joblib")
     print("Saved ->", (out_dir/"svm_linear_streaming.joblib").resolve())
 
 
+<<<<<<< HEAD
     
+=======
+>>>>>>> 67853e16185c53edbd3d9580bd5864ee25bb7cf6
 def main():
     #ensure splits exist
     split_data()
@@ -414,4 +468,8 @@ def main():
     eval_saved_test()
     explore(data_path='/Users/ryancalderon/Desktop/CSUSB_Courses/Fall_2025_Classes/CSE 5160 - Machine Learning/project1Code/images')
 
+<<<<<<< HEAD
 main()
+=======
+main()
+>>>>>>> 67853e16185c53edbd3d9580bd5864ee25bb7cf6
