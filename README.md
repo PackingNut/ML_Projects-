@@ -64,5 +64,3 @@ Computer Science & Engineering student
 Machine Learning & Cybersecurity focus
 
 ```
-
----
