@@ -1,7 +1,5 @@
+.venv/
 venv/
 npy_out/
-<<<<<<< HEAD
-creditcard.csv
-=======
 *.log
->>>>>>> 2b6ec0f7 (Add the rest of the Machine learning project code(s).)
+creditcard.csv
