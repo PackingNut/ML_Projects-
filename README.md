@@ -61,6 +61,4 @@ This repository serves as:
 **Ryan Calderon**
 
 Computer Science & Engineering student
-Machine Learning & Cybersecurity focus
-
-```
+Cybersecurity Certification
